@@ -1,7 +1,5 @@
 import pandas as pd
 import streamlit as st
-from PIL import Image
-import numpy as np
 from datetime import datetime
 
 # Page configuration
@@ -39,59 +37,67 @@ st.markdown("""
     en salones, laboratorios y espacios comunes para garantizar un ambiente sano.
 """)
 
-# Campus location (EAFIT)
-campus_location = pd.DataFrame({
-    'lat': [6.1991],
-    'lon': [-75.5786],
-    'location': ['Universidad EAFIT']
-})
-
-# Display map
-st.subheader("📍 Ubicación del Campus EAFIT - Medellín")
-st.map(campus_location, zoom=16)
-
 # File uploader
 uploaded_file = st.file_uploader('Cargar datos del sensor ambiental (CSV)', type=['csv'])
 
 if uploaded_file is not None:
     try:
-        # Load and process data
+        # ============================
+        # 🔧 1. CARGA Y CORRECCIÓN DE COLUMNAS
+        # ============================
+
         df1 = pd.read_csv(uploaded_file)
 
-        # Renombrar columnas según el archivo real
+        # Verificación obligatoria (solo para evitar errores inesperados)
+        expected_columns = ['_value', '_time']
+        for col in expected_columns:
+            if col not in df1.columns:
+                st.error(f"El archivo no contiene la columna obligatoria: {col}")
+                st.stop()
+
+        # Renombrar para que la app funcione
         df1 = df1.rename(columns={
-            'value': 'variable',
-            'timestamp': 'Time'
+            '_value': 'variable',
+            '_time': 'Time'
         })
 
-        # Convertir timestamp de epoch nanosegundos → datetime real
-        df1['Time'] = pd.to_datetime(df1['Time'], unit='ns')
+        # Convertir Time (formato RFC3339) a datetime
+        df1['Time'] = pd.to_datetime(df1['Time'], errors='coerce')
 
-        # Usamos Time como índice para gráficas y análisis
+        # Remover filas inválidas por si algún tiempo viene malo
+        df1 = df1.dropna(subset=['Time'])
+
+        # Establecer índice para gráficos
         df1 = df1.set_index('Time')
 
-        # Tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["🌡 Monitoreo en Tiempo Real", 
-                                          "📊 Análisis Ambiental", 
-                                          "🔍 Filtros y Alertas", 
-                                          "🏫 Información Institucional"])
+        # ============================
+        # 🔧 2. TABS DE NAVEGACIÓN
+        # ============================
 
-        # ---------------- TAB 1 ----------------
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🌡 Monitoreo en Tiempo Real", 
+            "📊 Análisis Ambiental", 
+            "🔍 Filtros y Alertas", 
+            "🏫 Información Institucional"
+        ])
+
+        # ==============================
+        # TAB 1 - MONITOREO EN TIEMPO REAL
+        # ==============================
         with tab1:
             st.subheader('Monitoreo de Calidad del Aire (CO₂ / COV / PM2.5)')
 
             col1, col2, col3 = st.columns(3)
 
-            # Current value
             current_value = df1["variable"].iloc[-1]
 
             with col1:
                 if current_value > 1200:
-                    st.error(f"🚨 Valor actual: {current_value:.1f} ppm - NO SALUDABLE")
+                    st.error(f"🚨 Actual: {current_value:.1f} ppm - NO SALUDABLE")
                 elif current_value > 800:
-                    st.warning(f"⚠ Valor actual: {current_value:.1f} ppm - ADVERTENCIA")
+                    st.warning(f"⚠ Actual: {current_value:.1f} ppm - ADVERTENCIA")
                 else:
-                    st.success(f"✅ Valor actual: {current_value:.1f} ppm - AIRE SANO")
+                    st.success(f"✅ Actual: {current_value:.1f} ppm - AIRE SANO")
 
             with col2:
                 avg_value = df1["variable"].mean()
@@ -101,7 +107,7 @@ if uploaded_file is not None:
                 max_value = df1["variable"].max()
                 st.metric("Valor Máximo Registrado", f"{max_value:.1f} ppm")
 
-            # Chart selector
+            # Selector gráfico
             chart_type = st.selectbox("Tipo de visualización", ["Línea", "Área", "Barra"])
 
             if chart_type == "Línea":
@@ -112,11 +118,13 @@ if uploaded_file is not None:
                 st.bar_chart(df1["variable"])
 
             if st.checkbox('Mostrar datos crudos del sensor'):
-                st.write(df1)
+                st.dataframe(df1)
 
-        # ---------------- TAB 2 ----------------
+        # ==============================
+        # TAB 2 - ANÁLISIS
+        # ==============================
         with tab2:
-            st.subheader('Análisis de Calidad del Aire y Estadísticas Ambientales')
+            st.subheader('Análisis de Calidad del Aire')
 
             stats_df = df1["variable"].describe()
 
@@ -141,7 +149,9 @@ if uploaded_file is not None:
                 st.metric("Tiempo de Aire Sano (%)", 
                          f"{(total_readings - high_readings)/total_readings*100:.1f}%")
 
-        # ---------------- TAB 3 ----------------
+        # ==============================
+        # TAB 3 - FILTROS
+        # ==============================
         with tab3:
             st.subheader('Filtros y Sistema de Alertas Ambientales')
 
@@ -168,58 +178,36 @@ if uploaded_file is not None:
                     'Filtrar valores mínimos (ppm)',
                     min_value, max_value, mean_value, key="min_val"
                 )
-                filtrado_df_min = df1[df1["variable"] > min_val]
-                st.dataframe(filtrado_df_min)
+                st.dataframe(df1[df1["variable"] > min_val])
 
             with col2:
                 max_val = st.slider(
                     'Filtrar valores máximos (ppm)',
                     min_value, max_value, mean_value, key="max_val"
                 )
-                filtrado_df_max = df1[df1["variable"] < max_val]
-                st.dataframe(filtrado_df_max)
+                st.dataframe(df1[df1["variable"] < max_val])
 
-        # ---------------- TAB 4 ----------------
+        # ==============================
+        # TAB 4 - INFO
+        # ==============================
         with tab4:
             st.subheader("Información Institucional - Universidad EAFIT")
 
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.write("### 📍 Contacto")
-                st.write("- Departamento de Infraestructura")
-                st.write("- 📞 Teléfono: +57 (4) 261 95 00")
-                st.write("- 📧 Email: ambiente@eafit.edu.co")
-                st.write("- Dirección: Carrera 49 #7 Sur-50, Medellín")
-
-            with col2:
-                st.write("### 🌿 Sistema de Calidad del Aire")
-                st.write("- Sensores recomendados: SCD-41, CCS811, MQ-135")
-                st.write("- Variables medidas: CO₂, COV, PM2.5")
-                st.write("- Umbral saludable CO₂: < 800 ppm")
-                st.write("- Advertencia: 800–1200 ppm")
-                st.write("- Crítico: >1200 ppm")
-                st.write("- Frecuencia de lectura: cada 1–5 min")
-
-                st.write("### 📋 Protocolos ambientales")
-                st.write("1. >1200 ppm: evacuar y aumentar ventilación")
-                st.write("2. >800 ppm: abrir ventanas y revisar flujo de aire")
-                st.write("3. Revisiones semanales de sensores")
+            st.write("### 🌿 Sistema de Calidad del Aire")
+            st.write("- Sensores compatibles: SCD-41, CCS811, MQ-135")
+            st.write("- Variables medidas: CO₂, COV, PM2.5")
+            st.write("- Umbrales recomendados para CO₂:")
+            st.write("   - < 800 ppm — Nivel saludable")
+            st.write("   - 800–1200 ppm — Advertencia")
+            st.write("   - > 1200 ppm — Crítico")
 
     except Exception as e:
         st.error(f'Error al procesar archivo: {str(e)}')
+
 else:
     st.info("""
     💡 *Instrucciones:*  
-    - Cargue un archivo CSV con datos del sensor ambiental  
-    - Debe incluir las columnas: value y timestamp  
-    - El sistema los analizará automáticamente
+    - Cargue un archivo CSV con columnas `_value` y `_time`  
+    - El sistema analizará automáticamente la calidad del aire  
     """)
-
-# Footer
-st.markdown("""
-    ---
-    *Sistema desarrollado para la Universidad EAFIT* 🌿  
-    Monitoreo ambiental para asegurar espacios saludables · Medellín, Colombia · 2024  
-""")
 
