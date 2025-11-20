@@ -58,18 +58,17 @@ if uploaded_file is not None:
         # Load and process data
         df1 = pd.read_csv(uploaded_file)
 
-        # Standardize sensor value column
-        if 'Time' in df1.columns:
-            other_columns = [col for col in df1.columns if col != 'Time']
-            if len(other_columns) > 0:
-                df1 = df1.rename(columns={other_columns[0]: 'variable'})
-        else:
-            df1 = df1.rename(columns={df1.columns[0]: 'variable'})
+        # Renombrar columnas según el archivo real
+        df1 = df1.rename(columns={
+            'value': 'variable',
+            'timestamp': 'Time'
+        })
 
-        # Format timestamp
-        if 'Time' in df1.columns:
-            df1['Time'] = pd.to_datetime(df1['Time'])
-            df1 = df1.set_index('Time')
+        # Convertir timestamp de epoch nanosegundos → datetime real
+        df1['Time'] = pd.to_datetime(df1['Time'], unit='ns')
+
+        # Usamos Time como índice para gráficas y análisis
+        df1 = df1.set_index('Time')
 
         # Tabs
         tab1, tab2, tab3, tab4 = st.tabs(["🌡 Monitoreo en Tiempo Real", 
@@ -213,7 +212,7 @@ else:
     st.info("""
     💡 *Instrucciones:*  
     - Cargue un archivo CSV con datos del sensor ambiental  
-    - Debe incluir timestamp y niveles de gas o CO₂  
+    - Debe incluir las columnas: value y timestamp  
     - El sistema los analizará automáticamente
     """)
 
@@ -223,3 +222,4 @@ st.markdown("""
     *Sistema desarrollado para la Universidad EAFIT* 🌿  
     Monitoreo ambiental para asegurar espacios saludables · Medellín, Colombia · 2024  
 """)
+
